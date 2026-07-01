@@ -1,0 +1,17 @@
+{
+  "name": "multiplayer-square-stomp",
+  "version": "1.0.0",
+  "description": "Real-time multiplayer square arena game with WebSocket synchronization.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.17.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

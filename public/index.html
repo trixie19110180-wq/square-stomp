@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Square Stomp</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section id="landing" class="landing" aria-labelledby="title">
+        <div class="brand">
+          <span class="mark" aria-hidden="true"></span>
+          <div>
+            <h1 id="title">Square Stomp</h1>
+            <p>Jump on rival squares, earn points, and stay moving.</p>
+          </div>
+        </div>
+
+        <form id="joinForm" class="join-form">
+          <label>
+            Username
+            <input id="username" name="username" autocomplete="nickname" maxlength="16" placeholder="2-16 characters" required />
+          </label>
+
+          <label>
+            Square color
+            <div class="color-row">
+              <input id="nativeColor" type="color" value="#3b82f6" aria-label="Choose color" />
+              <input id="color" name="color" value="#3b82f6" placeholder="#3b82f6 or rgba(59, 130, 246, 0.95)" required />
+            </div>
+          </label>
+
+          <button id="startButton" type="submit">Start</button>
+          <p id="joinError" class="error" role="alert"></p>
+        </form>
+      </section>
+
+      <section id="game" class="game hidden" aria-label="Game arena">
+        <header class="hud">
+          <div>
+            <strong id="connectionStatus">Connecting...</strong>
+            <span id="playerCount">0 players</span>
+          </div>
+          <ol id="scoreboard" class="scoreboard" aria-label="Scores"></ol>
+        </header>
+
+        <canvas id="arena" width="1280" height="720" aria-label="Shared arena"></canvas>
+
+        <footer class="controls">
+          <span>Move: A/D or arrows</span>
+          <span>Jump: W, up, or space</span>
+        </footer>
+
+        <div id="toast" class="toast" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <script type="module" src="/game.js"></script>
+  </body>
+</html>
