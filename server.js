@@ -6,7 +6,7 @@ import crypto from 'crypto';
 const PORT = Number(process.env.PORT || 3000);
 const TICK_RATE = 60;
 const BROADCAST_RATE = 30;
-const ARENA = { width: 3600, height: 720 };
+const ARENA = { width: 4200, height: 720 };
 const PLAYER_SIZE = 42;
 const GRAVITY = 2300;
 const MOVE_ACCEL = 3000;
@@ -15,16 +15,25 @@ const JUMP_SPEED = 820;
 const FRICTION = 0.82;
 const RESPAWN_INVULN_MS = 900;
 const STOMP_COOLDOWN_MS = 350;
+const SHOCKWAVE_COOLDOWN_MS = 4000;
+const SHOCKWAVE_RADIUS = 260;
+const SHOCKWAVE_FORCE_X = 920;
+const SHOCKWAVE_FORCE_Y = 620 * 1.5;
 const PLATFORMS = [
-  { x: 0, y: 680, width: 3600, height: 40 },
-  { x: 220, y: 560, width: 260, height: 26 },
-  { x: 620, y: 480, width: 230, height: 26 },
-  { x: 1030, y: 590, width: 290, height: 26 },
-  { x: 1430, y: 430, width: 260, height: 26 },
-  { x: 1780, y: 540, width: 300, height: 26 },
-  { x: 2220, y: 465, width: 260, height: 26 },
-  { x: 2580, y: 595, width: 320, height: 26 },
-  { x: 3060, y: 500, width: 260, height: 26 }
+  { x: 0, y: 680, width: 4200, height: 40 },
+  { x: 210, y: 585, width: 280, height: 26 },
+  { x: 610, y: 515, width: 300, height: 26 },
+  { x: 1030, y: 585, width: 330, height: 26 },
+  { x: 1460, y: 500, width: 300, height: 26 },
+  { x: 1840, y: 590, width: 340, height: 26 },
+  { x: 2300, y: 520, width: 300, height: 26 },
+  { x: 2680, y: 595, width: 350, height: 26 },
+  { x: 3160, y: 525, width: 310, height: 26 },
+  { x: 3570, y: 595, width: 350, height: 26 },
+  { x: 760, y: 405, width: 230, height: 24 },
+  { x: 1570, y: 385, width: 240, height: 24 },
+  { x: 2450, y: 405, width: 230, height: 24 },
+  { x: 3350, y: 405, width: 240, height: 24 }
 ];
 
 const app = express();
@@ -51,6 +60,7 @@ const players = new Map();
  * @property {boolean} grounded
  * @property {{left: boolean, right: boolean, jump: boolean}} input
  * @property {number} lastStompAt
+ * @property {number} lastShockwaveAt
  * @property {number} invulnerableUntil
  */
 
@@ -84,6 +94,11 @@ wss.on('connection', (socket) => {
 
     if (message?.type === 'input') {
       handleInput(id, message);
+      return;
+    }
+
+    if (message?.type === 'shockwave') {
+      handleShockwave(id);
     }
   });
 
@@ -126,10 +141,18 @@ function handleJoin(id, socket, message) {
     grounded: false,
     input: { left: false, right: false, jump: false },
     lastStompAt: 0,
+    lastShockwaveAt: 0,
     invulnerableUntil: Date.now() + RESPAWN_INVULN_MS
   });
 
-  send(socket, { type: 'joined', id, arena: ARENA, size: PLAYER_SIZE, platforms: PLATFORMS });
+  send(socket, {
+    type: 'joined',
+    id,
+    arena: ARENA,
+    size: PLAYER_SIZE,
+    platforms: PLATFORMS,
+    shockwave: { cooldownMs: SHOCKWAVE_COOLDOWN_MS, radius: SHOCKWAVE_RADIUS }
+  });
   broadcastSystem(`${username} joined`);
   broadcastState();
 }
@@ -145,6 +168,64 @@ function handleInput(id, message) {
     right: Boolean(message.input?.right),
     jump: Boolean(message.input?.jump)
   };
+}
+
+function handleShockwave(id) {
+  const player = players.get(id);
+  if (!player) {
+    return;
+  }
+
+  const now = Date.now();
+  if (now - player.lastShockwaveAt < SHOCKWAVE_COOLDOWN_MS) {
+    send(sockets.get(id), {
+      type: 'event',
+      event: 'shockwaveBlocked',
+      readyIn: SHOCKWAVE_COOLDOWN_MS - (now - player.lastShockwaveAt)
+    });
+    return;
+  }
+
+  player.lastShockwaveAt = now;
+  const sourceX = player.x + PLAYER_SIZE / 2;
+  const sourceY = player.y + PLAYER_SIZE / 2;
+  let hitCount = 0;
+
+  for (const target of players.values()) {
+    if (target.id === player.id) {
+      continue;
+    }
+
+    const targetX = target.x + PLAYER_SIZE / 2;
+    const targetY = target.y + PLAYER_SIZE / 2;
+    const dx = targetX - sourceX;
+    const dy = targetY - sourceY;
+    const distance = Math.hypot(dx, dy);
+
+    if (distance > SHOCKWAVE_RADIUS) {
+      continue;
+    }
+
+    const closeness = 1 - distance / SHOCKWAVE_RADIUS;
+    const force = 0.35 + closeness * 0.65;
+    const directionX = distance > 0 ? dx / distance : Math.sign(Math.random() - 0.5) || 1;
+
+    target.vx += directionX * SHOCKWAVE_FORCE_X * force;
+    target.vy = Math.min(target.vy, -SHOCKWAVE_FORCE_Y * force);
+    target.grounded = false;
+    hitCount += 1;
+  }
+
+  broadcast({
+    type: 'event',
+    event: 'shockwave',
+    playerId: player.id,
+    username: player.username,
+    x: round(sourceX),
+    y: round(sourceY),
+    radius: SHOCKWAVE_RADIUS,
+    hitCount
+  });
 }
 
 function removePlayer(id) {
@@ -350,8 +431,11 @@ function broadcastState() {
       color: player.color,
       x: round(player.x),
       y: round(player.y),
+      vx: round(player.vx),
+      vy: round(player.vy),
       score: player.score,
-      invulnerable: Date.now() < player.invulnerableUntil
+      invulnerable: Date.now() < player.invulnerableUntil,
+      shockReadyIn: Math.max(0, SHOCKWAVE_COOLDOWN_MS - (Date.now() - player.lastShockwaveAt))
     }))
   });
 }

@@ -10,6 +10,8 @@ const canvas = document.querySelector('#arena');
 const ctx = canvas.getContext('2d');
 const connectionStatus = document.querySelector('#connectionStatus');
 const playerCount = document.querySelector('#playerCount');
+const coordinates = document.querySelector('#coordinates');
+const shockStatus = document.querySelector('#shockStatus');
 const scoreboard = document.querySelector('#scoreboard');
 const toast = document.querySelector('#toast');
 
@@ -19,10 +21,14 @@ const state = {
   localId: '',
   arena: { width: 3600, height: 720 },
   platforms: [],
+  shockwave: { cooldownMs: 4000, radius: 260 },
   players: new Map(),
+  renderedPlayers: new Map(),
+  shockwaves: [],
   input: { left: false, right: false, jump: false },
   joined: false,
-  lastInputSent: ''
+  lastInputSent: '',
+  nextShockwaveAt: 0
 };
 
 let toastTimer = 0;
@@ -111,6 +117,7 @@ function handleServerMessage(message) {
     state.localId = message.id;
     state.arena = message.arena;
     state.platforms = message.platforms || [];
+    state.shockwave = message.shockwave || state.shockwave;
     state.joined = true;
     landing.classList.add('hidden');
     game.classList.remove('hidden');
@@ -122,7 +129,8 @@ function handleServerMessage(message) {
   }
 
   if (message.type === 'state') {
-    state.players = new Map(message.players.map((player) => [player.id, player]));
+    state.players = new Map(message.players.map((player) => [player.id, normalizePlayer(player)]));
+    seedRenderedPlayers();
     updateHud();
     return;
   }
@@ -130,6 +138,15 @@ function handleServerMessage(message) {
   if (message.type === 'event') {
     if (message.event === 'stomp') {
       showToast(`${message.attacker} stomped ${message.target}`);
+    } else if (message.event === 'shockwave') {
+      state.shockwaves.push({ ...message, startedAt: performance.now() });
+      if (message.playerId === state.localId) {
+        state.nextShockwaveAt = performance.now() + state.shockwave.cooldownMs;
+      }
+      showToast(`${message.username} used shockwave${message.hitCount ? ` (${message.hitCount} hit)` : ''}`);
+    } else if (message.event === 'shockwaveBlocked') {
+      state.nextShockwaveAt = performance.now() + message.readyIn;
+      showToast(`Shockwave ready in ${(message.readyIn / 1000).toFixed(1)}s`);
     } else if (message.event === 'system') {
       showToast(message.message);
     }
@@ -141,6 +158,11 @@ window.addEventListener('keydown', (event) => {
     event.preventDefault();
   }
 
+  if (event.key === ' ' && !event.repeat) {
+    sendShockwave();
+    return;
+  }
+
   setKey(event.key, true);
 });
 
@@ -150,7 +172,7 @@ window.addEventListener('resize', resizeCanvasForDevice);
 function setKey(key, pressed) {
   if (key === 'ArrowLeft' || key === 'a' || key === 'A') state.input.left = pressed;
   if (key === 'ArrowRight' || key === 'd' || key === 'D') state.input.right = pressed;
-  if (key === 'ArrowUp' || key === 'w' || key === 'W' || key === ' ') state.input.jump = pressed;
+  if (key === 'ArrowUp' || key === 'w' || key === 'W') state.input.jump = pressed;
   sendInput();
 }
 
@@ -168,22 +190,42 @@ function sendInput() {
   state.lastInputSent = payload;
 }
 
+function sendShockwave() {
+  if (!state.socket || state.socket.readyState !== WebSocket.OPEN || !state.joined) {
+    return;
+  }
+
+  const now = performance.now();
+  const serverReadyIn = state.players.get(state.localId)?.shockReadyIn || 0;
+  const readyIn = Math.max(0, state.nextShockwaveAt - now, serverReadyIn);
+  if (readyIn > 0) {
+    showToast(`Shockwave ready in ${(readyIn / 1000).toFixed(1)}s`);
+    return;
+  }
+
+  state.nextShockwaveAt = now + state.shockwave.cooldownMs;
+  state.socket.send(JSON.stringify({ type: 'shockwave' }));
+}
+
 function render() {
   if (!state.joined) {
     return;
   }
 
   const { width, height, ratio } = getCanvasMetrics();
+  updateRenderedPlayers();
   const camera = getCamera(width, height);
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   ctx.clearRect(0, 0, width, height);
   drawBackground(width, height, camera);
   drawPlatforms(camera);
+  drawShockwaves(camera);
 
-  for (const player of state.players.values()) {
+  for (const player of state.renderedPlayers.values()) {
     drawPlayer(player, camera);
   }
 
+  updateHud();
   requestAnimationFrame(render);
 }
 
@@ -268,11 +310,31 @@ function drawPlayer(player, camera) {
   ctx.restore();
 }
 
+function drawShockwaves(camera) {
+  const now = performance.now();
+  state.shockwaves = state.shockwaves.filter((shockwave) => now - shockwave.startedAt < 520);
+
+  ctx.save();
+  for (const shockwave of state.shockwaves) {
+    const age = (now - shockwave.startedAt) / 520;
+    const radius = shockwave.radius * age * camera.scale;
+    const x = (shockwave.x - camera.x) * camera.scale;
+    const y = (shockwave.y - camera.y) * camera.scale;
+
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(74, 222, 128, ${Math.max(0, 1 - age)})`;
+    ctx.lineWidth = Math.max(2, 10 * (1 - age));
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function getCamera(width, height) {
   const scale = height / state.arena.height;
   const viewWidth = width / scale;
   const viewHeight = height / scale;
-  const local = state.players.get(state.localId);
+  const local = state.renderedPlayers.get(state.localId) || state.players.get(state.localId);
   const focusX = local ? local.x + PLAYER_SIZE / 2 : viewWidth / 2;
   const focusY = local ? local.y + PLAYER_SIZE / 2 : viewHeight / 2;
 
@@ -287,13 +349,60 @@ function getCamera(width, height) {
 
 function updateHud() {
   const players = [...state.players.values()].sort((a, b) => b.score - a.score || a.username.localeCompare(b.username));
+  const local = state.players.get(state.localId);
+  const remaining = Math.max(0, state.nextShockwaveAt - performance.now(), local?.shockReadyIn || 0);
+
   playerCount.textContent = `${players.length} player${players.length === 1 ? '' : 's'}`;
+  coordinates.textContent = local ? `x: ${Math.round(local.x)} y: ${Math.round(local.y)} z: 0` : 'x: 0 y: 0 z: 0';
+  shockStatus.textContent = remaining > 0 ? `Shockwave: ${(remaining / 1000).toFixed(1)}s` : 'Shockwave: Ready';
   scoreboard.replaceChildren(...players.map((player) => {
     const item = document.createElement('li');
     item.textContent = `${player.username}: ${player.score}`;
     item.style.borderColor = player.color;
     return item;
   }));
+}
+
+function normalizePlayer(player) {
+  return {
+    ...player,
+    z: 0,
+    vx: player.vx || 0,
+    vy: player.vy || 0
+  };
+}
+
+function seedRenderedPlayers() {
+  for (const [id, player] of state.players) {
+    if (!state.renderedPlayers.has(id)) {
+      state.renderedPlayers.set(id, { ...player });
+    }
+  }
+
+  for (const id of state.renderedPlayers.keys()) {
+    if (!state.players.has(id)) {
+      state.renderedPlayers.delete(id);
+    }
+  }
+}
+
+function updateRenderedPlayers() {
+  for (const [id, target] of state.players) {
+    const rendered = state.renderedPlayers.get(id);
+    if (!rendered) {
+      state.renderedPlayers.set(id, { ...target });
+      continue;
+    }
+
+    const amount = id === state.localId ? 0.45 : 0.28;
+    rendered.x += (target.x - rendered.x) * amount;
+    rendered.y += (target.y - rendered.y) * amount;
+    rendered.vx = target.vx;
+    rendered.vy = target.vy;
+    rendered.score = target.score;
+    rendered.invulnerable = target.invulnerable;
+    rendered.shockReadyIn = target.shockReadyIn;
+  }
 }
 
 function resizeCanvasForDevice() {

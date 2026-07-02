@@ -1,6 +1,6 @@
 # Square Stomp
 
-A real-time multiplayer browser game. Players join with a unique username and a custom hex, rgb, or rgba color, then move a colored square through a side-scrolling platform map. Landing on another player awards the stomping player one point and respawns the stomped player.
+A real-time multiplayer browser game. Players join with a unique username and a custom hex, rgb, or rgba color, then move a colored square through a side-scrolling platform map. Landing on another player awards the stomping player one point and respawns the stomped player. Space triggers a 4 second cooldown shockwave that blasts nearby players away.
 
 ## Run locally
 
@@ -20,14 +20,15 @@ cd /Users/jinheean/Documents/multiplayer-square-stomp && PATH="/Users/jinheean/.
 ## Controls
 
 - Move left/right: `A` and `D`, or arrow keys
-- Jump: `W`, up arrow, or space
+- Jump: `W` or up arrow
+- Shockwave: space
 
 ## Project structure
 
-- `server.js` manages active players, unique usernames, platform physics, stomp detection, scoring, respawns, and WebSocket broadcasts.
+- `server.js` manages active players, unique usernames, platform physics, shockwaves, stomp detection, scoring, respawns, and WebSocket broadcasts.
 - `public/index.html` contains the landing screen and game canvas.
 - `public/styles.css` handles responsive layout and visual design.
-- `public/game.js` handles joining, keyboard input, WebSocket messages, camera scrolling, drawing, errors, and the scoreboard.
+- `public/game.js` handles joining, keyboard input, WebSocket messages, camera scrolling, smoother drawing, coordinates, errors, and the scoreboard.
 
 ## Make it a real web game for free
 
