@@ -195,6 +195,10 @@ function handleServerMessage(message) {
 }
 
 window.addEventListener('keydown', (event) => {
+  if (isTypingTarget(event.target)) {
+    return;
+  }
+
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', ' ', 'a', 'd', 'w', 'A', 'D', 'W'].includes(event.key)) {
     event.preventDefault();
   }
@@ -210,6 +214,10 @@ window.addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('keyup', (event) => {
+  if (isTypingTarget(event.target)) {
+    return;
+  }
+
   if (event.key === ' ') {
     state.shockHeld = false;
     stopShockSpam();
@@ -221,6 +229,10 @@ window.addEventListener('keyup', (event) => {
 window.addEventListener('resize', resizeCanvasForDevice);
 
 window.addEventListener('keydown', (event) => {
+  if (isTypingTarget(event.target)) {
+    return;
+  }
+
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'u') {
     event.preventDefault();
     showToast('Page source is disabled here. Server code is not sent to browsers.');
@@ -237,6 +249,10 @@ function setKey(key, pressed, repeat) {
     }
   }
   sendInput();
+}
+
+function isTypingTarget(target) {
+  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable;
 }
 
 function sendInput() {
