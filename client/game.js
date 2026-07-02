@@ -7,6 +7,7 @@ const colorInput = document.querySelector('#color');
 const adminFields = document.querySelector('#adminFields');
 const adminPassphraseInput = document.querySelector('#adminPassphrase');
 const adminCodeInput = document.querySelector('#adminCode');
+const secretToggleButtons = document.querySelectorAll('.secret-toggle');
 const startButton = document.querySelector('#startButton');
 const joinError = document.querySelector('#joinError');
 const canvas = document.querySelector('#arena');
@@ -18,6 +19,7 @@ const fpsStatus = document.querySelector('#fpsStatus');
 const shockStatus = document.querySelector('#shockStatus');
 const scoreboard = document.querySelector('#scoreboard');
 const toast = document.querySelector('#toast');
+const loadingScreen = document.querySelector('#loadingScreen');
 
 const PLAYER_SIZE = 42;
 const state = {
@@ -43,8 +45,25 @@ const state = {
 let toastTimer = 0;
 let shockSpamTimer = 0;
 
+window.setTimeout(() => {
+  loadingScreen?.classList.add('loading-screen-hidden');
+}, 1000);
+
 usernameInput.addEventListener('input', () => {
-  adminFields.classList.toggle('hidden', !isReservedAdminName(usernameInput.value));
+  syncAdminFields();
+});
+
+secretToggleButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    const input = document.querySelector(`#${button.dataset.target}`);
+    if (!input) {
+      return;
+    }
+
+    const visible = input.type === 'text';
+    input.type = visible ? 'password' : 'text';
+    button.textContent = visible ? 'Show' : 'Hide';
+  });
 });
 
 nativeColorInput.addEventListener('input', () => {
@@ -259,6 +278,23 @@ function startShockSpam() {
 function stopShockSpam() {
   window.clearInterval(shockSpamTimer);
   shockSpamTimer = 0;
+}
+
+function syncAdminFields() {
+  const enabled = isReservedAdminName(usernameInput.value);
+  adminFields.classList.toggle('hidden', !enabled);
+  adminPassphraseInput.disabled = !enabled;
+  adminCodeInput.disabled = !enabled;
+
+  if (!enabled) {
+    adminPassphraseInput.value = '';
+    adminCodeInput.value = '';
+    adminPassphraseInput.type = 'password';
+    adminCodeInput.type = 'password';
+    secretToggleButtons.forEach((button) => {
+      button.textContent = 'Show';
+    });
+  }
 }
 
 function render() {

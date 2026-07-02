@@ -49,10 +49,10 @@ Browser games always send their client HTML/CSS/JavaScript to players, so Ctrl+U
 ## Project structure
 
 - `map.js` contains only the tile map grid. `1` means solid platform, `0` means empty space.
+- `client/game.js` is the readable browser source. The server serves `/game.js` as minified and mangled JavaScript.
 - `server.js` manages active players, unique usernames, platform physics, shockwaves, stomp detection, scoring, respawns, and WebSocket broadcasts.
 - `public/index.html` contains the landing screen and game canvas.
 - `public/styles.css` handles responsive layout and visual design.
-- `public/game.js` handles joining, keyboard input, WebSocket messages, camera scrolling, smoother drawing, coordinates, errors, and the scoreboard.
 
 ## Make it a real web game for free
 

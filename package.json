@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "express": "^4.19.2",
+    "terser": "^5.48.0",
     "ws": "^8.17.1"
   },
   "engines": {

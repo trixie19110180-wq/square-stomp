@@ -7,6 +7,12 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
+    <div id="loadingScreen" class="loading-screen" aria-live="polite">
+      <div class="loading-mark" aria-hidden="true"></div>
+      <h1>Square Stomp</h1>
+      <p>Made by 강지오</p>
+    </div>
+
     <main class="shell">
       <section id="landing" class="landing" aria-labelledby="title">
         <div class="brand">
@@ -34,12 +40,18 @@
           <div id="adminFields" class="admin-fields hidden">
             <label>
               Admin password
-              <input id="adminPassphrase" name="adminPassphrase" type="password" autocomplete="off" placeholder="Reserved names only" />
+              <div class="secret-row">
+                <input id="adminPassphrase" name="adminPassphrase" type="password" autocomplete="off" placeholder="Reserved names only" disabled />
+                <button class="secret-toggle" type="button" data-target="adminPassphrase">Show</button>
+              </div>
             </label>
 
             <label>
               6-digit passcode
-              <input id="adminCode" name="adminCode" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="000000" />
+              <div class="secret-row">
+                <input id="adminCode" name="adminCode" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="000000" disabled />
+                <button class="secret-toggle" type="button" data-target="adminCode">Show</button>
+              </div>
             </label>
           </div>
 

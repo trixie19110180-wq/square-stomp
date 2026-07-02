@@ -4,6 +4,7 @@ import { WebSocketServer } from 'ws';
 import crypto from 'crypto';
 import fs from 'fs';
 import vm from 'vm';
+import { minify } from 'terser';
 
 const PORT = Number(process.env.PORT || 3000);
 const TICK_RATE = 60;
@@ -30,6 +31,7 @@ const RESERVED_ADMIN_NAMES = new Set(['강지오', 'trixie']);
 const ADMIN_SHOCKWAVE_COOLDOWN_MS = 100;
 const ADMIN_PASSCODE_TEXT = process.env.ADMIN_PASSCODE_TEXT || '';
 const ADMIN_PASSCODE_CODE = process.env.ADMIN_PASSCODE_CODE || '';
+const CLIENT_JS = await buildClientScript();
 
 const app = express();
 const server = http.createServer(app);
@@ -60,6 +62,12 @@ const players = new Map();
  * @property {number} lastShockwaveAt
  * @property {number} invulnerableUntil
  */
+
+app.get('/game.js', (_req, res) => {
+  res.type('application/javascript');
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(CLIENT_JS);
+});
 
 app.use(express.static('public'));
 
@@ -574,6 +582,29 @@ function loadMap() {
   }
 
   return loadedMap;
+}
+
+async function buildClientScript() {
+  const source = fs.readFileSync(new URL('./client/game.js', import.meta.url), 'utf8');
+  const minified = await minify(source, {
+    compress: {
+      passes: 3,
+      drop_console: true
+    },
+    mangle: {
+      toplevel: true
+    },
+    format: {
+      comments: false,
+      ascii_only: true
+    }
+  });
+
+  if (!minified.code) {
+    throw new Error('Failed to build client script.');
+  }
+
+  return minified.code;
 }
 
 function mapToPlatforms(map) {
