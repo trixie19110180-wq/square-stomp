@@ -31,7 +31,8 @@ const state = {
   players: new Map(),
   renderedPlayers: new Map(),
   shockwaves: [],
-  input: { left: false, right: false, jumpToken: 0 },
+  deathParticles: [],
+  input: { left: false, right: false, jumpHeld: false, jumpToken: 0 },
   joined: false,
   lastInputSent: '',
   nextShockwaveAt: 0,
@@ -47,7 +48,7 @@ let shockSpamTimer = 0;
 
 window.setTimeout(() => {
   loadingScreen?.classList.add('loading-screen-hidden');
-}, 1000);
+}, 2200);
 
 usernameInput.addEventListener('input', () => {
   syncAdminFields();
@@ -107,7 +108,7 @@ joinForm.addEventListener('submit', async (event) => {
       throw new Error(result.reason || 'That username is already active.');
     }
 
-    connect(username, color, isAdminName ? adminPassphraseInput.value : '', isAdminName ? adminCodeInput.value : '');
+    connect(username, color, isAdminName ? adminPassphraseInput.value.trim() : '', isAdminName ? adminCodeInput.value.trim() : '');
   } catch (error) {
     showError(error.message || 'Could not check username. Try again.');
     startButton.disabled = false;
@@ -176,6 +177,7 @@ function handleServerMessage(message) {
 
   if (message.type === 'event') {
     if (message.event === 'stomp') {
+      spawnDeathParticles(message);
       showToast(`${message.attacker} stomped ${message.target}`);
     } else if (message.event === 'shockwave') {
       state.shockwaves.push({ ...message, startedAt: performance.now() });
@@ -228,7 +230,12 @@ window.addEventListener('keydown', (event) => {
 function setKey(key, pressed, repeat) {
   if (key === 'ArrowLeft' || key === 'a' || key === 'A') state.input.left = pressed;
   if (key === 'ArrowRight' || key === 'd' || key === 'D') state.input.right = pressed;
-  if (pressed && !repeat && (key === 'ArrowUp' || key === 'w' || key === 'W')) state.input.jumpToken += 1;
+  if (key === 'ArrowUp' || key === 'w' || key === 'W') {
+    state.input.jumpHeld = pressed;
+    if (pressed && !repeat) {
+      state.input.jumpToken += 1;
+    }
+  }
   sendInput();
 }
 
@@ -311,6 +318,7 @@ function render() {
   drawBackground(width, height, camera);
   drawPlatforms(camera);
   drawShockwaves(camera);
+  drawDeathParticles(camera);
 
   for (const player of state.renderedPlayers.values()) {
     drawPlayer(player, camera);
@@ -418,6 +426,50 @@ function drawShockwaves(camera) {
     ctx.lineWidth = Math.max(2, 10 * (1 - age));
     ctx.stroke();
   }
+  ctx.restore();
+}
+
+function spawnDeathParticles(message) {
+  const color = message.color || '#f8fafc';
+  const x = Number(message.x) || 0;
+  const y = Number(message.y) || 0;
+
+  for (let index = 0; index < 34; index += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 110 + Math.random() * 420;
+    state.deathParticles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 160,
+      color,
+      size: 4 + Math.random() * 7,
+      startedAt: performance.now(),
+      ttl: 620 + Math.random() * 380
+    });
+  }
+}
+
+function drawDeathParticles(camera) {
+  const now = performance.now();
+  state.deathParticles = state.deathParticles.filter((particle) => now - particle.startedAt < particle.ttl);
+
+  ctx.save();
+  for (const particle of state.deathParticles) {
+    const age = now - particle.startedAt;
+    const t = age / 1000;
+    const fade = 1 - age / particle.ttl;
+    const worldX = particle.x + particle.vx * t;
+    const worldY = particle.y + particle.vy * t + 0.5 * 900 * t * t;
+    const x = (worldX - camera.x) * camera.scale;
+    const y = (worldY - camera.y) * camera.scale;
+    const size = particle.size * camera.scale * Math.max(0.25, fade);
+
+    ctx.globalAlpha = Math.max(0, fade);
+    ctx.fillStyle = particle.color;
+    ctx.fillRect(x - size / 2, y - size / 2, size, size);
+  }
+  ctx.globalAlpha = 1;
   ctx.restore();
 }
 

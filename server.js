@@ -56,7 +56,7 @@ const players = new Map();
  * @property {number} score
  * @property {boolean} isAdmin
  * @property {boolean} grounded
- * @property {{left: boolean, right: boolean, jumpToken: number}} input
+ * @property {{left: boolean, right: boolean, jumpHeld: boolean, jumpToken: number}} input
  * @property {number} lastJumpToken
  * @property {number} lastStompAt
  * @property {number} lastShockwaveAt
@@ -151,7 +151,7 @@ function handleJoin(id, socket, message) {
     score: 0,
     isAdmin,
     grounded: false,
-    input: { left: false, right: false, jumpToken: 0 },
+    input: { left: false, right: false, jumpHeld: false, jumpToken: 0 },
     lastJumpToken: 0,
     lastStompAt: 0,
     lastShockwaveAt: 0,
@@ -180,6 +180,7 @@ function handleInput(id, message) {
   player.input = {
     left: Boolean(message.input?.left),
     right: Boolean(message.input?.right),
+    jumpHeld: Boolean(message.input?.jumpHeld),
     jumpToken: Number.isSafeInteger(message.input?.jumpToken) ? message.input.jumpToken : player.input.jumpToken
   };
 
@@ -274,6 +275,11 @@ function update(dt) {
     if (!direction) {
       player.vx *= FRICTION;
       if (Math.abs(player.vx) < 4) player.vx = 0;
+    }
+
+    if (!player.isAdmin && player.input.jumpHeld && player.grounded) {
+      player.vy = -JUMP_SPEED;
+      player.grounded = false;
     }
 
     player.x += player.vx * dt;
@@ -400,6 +406,9 @@ function awardStomp(attacker, target, now) {
   attacker.vy = -JUMP_SPEED * 0.55;
   attacker.lastStompAt = now;
 
+  const defeatedX = target.x + PLAYER_SIZE / 2;
+  const defeatedY = target.y + PLAYER_SIZE / 2;
+  const defeatedColor = target.color;
   const spawn = getSpawnPoint(target.id);
   target.x = spawn.x;
   target.y = spawn.y;
@@ -416,7 +425,10 @@ function awardStomp(attacker, target, now) {
     attackerId: attacker.id,
     attacker: attacker.username,
     targetId: target.id,
-    target: target.username
+    target: target.username,
+    x: round(defeatedX),
+    y: round(defeatedY),
+    color: defeatedColor
   });
 }
 
@@ -523,10 +535,10 @@ function isReservedAdminName(username) {
 
 function isValidAdminPasscodes(passphrase, code) {
   return (
-    ADMIN_PASSCODE_TEXT !== '' &&
-    ADMIN_PASSCODE_CODE !== '' &&
-    String(passphrase || '') === ADMIN_PASSCODE_TEXT &&
-    String(code || '') === ADMIN_PASSCODE_CODE
+    ADMIN_PASSCODE_TEXT.trim() !== '' &&
+    ADMIN_PASSCODE_CODE.trim() !== '' &&
+    String(passphrase || '').trim() === ADMIN_PASSCODE_TEXT.trim() &&
+    String(code || '').trim() === ADMIN_PASSCODE_CODE.trim()
   );
 }
 
