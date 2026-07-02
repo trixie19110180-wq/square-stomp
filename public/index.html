@@ -31,6 +31,18 @@
             </div>
           </label>
 
+          <div id="adminFields" class="admin-fields hidden">
+            <label>
+              Admin password
+              <input id="adminPassphrase" name="adminPassphrase" type="password" autocomplete="off" placeholder="Reserved names only" />
+            </label>
+
+            <label>
+              6-digit passcode
+              <input id="adminCode" name="adminCode" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="000000" />
+            </label>
+          </div>
+
           <button id="startButton" type="submit">Start</button>
           <p id="joinError" class="error" role="alert"></p>
         </form>

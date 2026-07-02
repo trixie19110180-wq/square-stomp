@@ -25,6 +25,27 @@ cd /Users/jinheean/Documents/multiplayer-square-stomp && PATH="/Users/jinheean/.
 
 Positions shown in the HUD are divided by 100, so an internal `x` position of `3422` appears as `34.22`.
 
+## Admin names
+
+Reserved names are blocked unless the server has admin passcodes configured. Set these as environment variables on the server:
+
+```text
+ADMIN_PASSCODE_TEXT
+ADMIN_PASSCODE_CODE
+```
+
+Do not put real passcodes in public source files.
+
+Admin players get:
+
+- 0.1 second shockwave cooldown
+- Hold-space shockwave repeat
+- Infinite air jumps
+
+## Source visibility
+
+Browser games always send their client HTML/CSS/JavaScript to players, so Ctrl+U and browser developer tools can never be fully blocked. This project keeps the important checks on the server, and the admin passcodes are read from server environment variables instead of the browser code.
+
 ## Project structure
 
 - `map.js` contains only the tile map grid. `1` means solid platform, `0` means empty space.

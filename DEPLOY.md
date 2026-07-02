@@ -78,8 +78,15 @@ Start Command: pnpm start
 Plan: Free
 ```
 
-7. Click `Deploy Web Service`.
-8. Wait for Render to finish.
-9. Open the Render URL it gives you.
+7. Add these environment variables if you want reserved-name admin powers:
+
+```text
+ADMIN_PASSCODE_TEXT=your-admin-password
+ADMIN_PASSCODE_CODE=your-6-digit-code
+```
+
+8. Click `Deploy Web Service`.
+9. Wait for Render to finish.
+10. Open the Render URL it gives you.
 
 Free Render services can sleep when nobody is playing, so the first visit may be slow.

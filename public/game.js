@@ -4,6 +4,9 @@ const joinForm = document.querySelector('#joinForm');
 const usernameInput = document.querySelector('#username');
 const nativeColorInput = document.querySelector('#nativeColor');
 const colorInput = document.querySelector('#color');
+const adminFields = document.querySelector('#adminFields');
+const adminPassphraseInput = document.querySelector('#adminPassphrase');
+const adminCodeInput = document.querySelector('#adminCode');
 const startButton = document.querySelector('#startButton');
 const joinError = document.querySelector('#joinError');
 const canvas = document.querySelector('#arena');
@@ -26,16 +29,23 @@ const state = {
   players: new Map(),
   renderedPlayers: new Map(),
   shockwaves: [],
-  input: { left: false, right: false, jump: false },
+  input: { left: false, right: false, jumpToken: 0 },
   joined: false,
   lastInputSent: '',
   nextShockwaveAt: 0,
+  isAdmin: false,
+  shockHeld: false,
   fps: 0,
   framesThisSecond: 0,
   lastFpsAt: performance.now()
 };
 
 let toastTimer = 0;
+let shockSpamTimer = 0;
+
+usernameInput.addEventListener('input', () => {
+  adminFields.classList.toggle('hidden', !isReservedAdminName(usernameInput.value));
+});
 
 nativeColorInput.addEventListener('input', () => {
   colorInput.value = nativeColorInput.value;
@@ -54,9 +64,14 @@ joinForm.addEventListener('submit', async (event) => {
 
   const username = usernameInput.value.trim().replace(/\s+/g, ' ');
   const color = colorInput.value.trim();
+  const isAdminName = isReservedAdminName(username);
 
   if (!isValidUsername(username)) {
     return showError('Use 2-16 Korean/English letters, numbers, spaces, underscores, or hyphens.');
+  }
+
+  if (isAdminName && (!adminPassphraseInput.value || !/^\d{6}$/.test(adminCodeInput.value))) {
+    return showError('Reserved names need the admin password and 6-digit passcode.');
   }
 
   if (!isValidColorFormat(color)) {
@@ -73,7 +88,7 @@ joinForm.addEventListener('submit', async (event) => {
       throw new Error(result.reason || 'That username is already active.');
     }
 
-    connect(username, color);
+    connect(username, color, isAdminName ? adminPassphraseInput.value : '', isAdminName ? adminCodeInput.value : '');
   } catch (error) {
     showError(error.message || 'Could not check username. Try again.');
     startButton.disabled = false;
@@ -81,14 +96,14 @@ joinForm.addEventListener('submit', async (event) => {
   }
 });
 
-function connect(username, color) {
+function connect(username, color, adminPassphrase, adminCode) {
   const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
   const socket = new WebSocket(`${protocol}://${location.host}`);
   state.socket = socket;
 
   socket.addEventListener('open', () => {
     connectionStatus.textContent = 'Connected';
-    socket.send(JSON.stringify({ type: 'join', username, color }));
+    socket.send(JSON.stringify({ type: 'join', username, color, adminPassphrase, adminCode }));
   });
 
   socket.addEventListener('message', (event) => {
@@ -121,6 +136,7 @@ function handleServerMessage(message) {
     state.localId = message.id;
     state.arena = message.arena;
     state.platforms = message.platforms || [];
+    state.isAdmin = Boolean(message.isAdmin);
     state.shockwave = message.shockwave || state.shockwave;
     state.joined = true;
     landing.classList.add('hidden');
@@ -163,20 +179,37 @@ window.addEventListener('keydown', (event) => {
   }
 
   if (event.key === ' ' && !event.repeat) {
+    state.shockHeld = true;
     sendShockwave();
+    startShockSpam();
     return;
   }
 
-  setKey(event.key, true);
+  setKey(event.key, true, event.repeat);
 });
 
-window.addEventListener('keyup', (event) => setKey(event.key, false));
+window.addEventListener('keyup', (event) => {
+  if (event.key === ' ') {
+    state.shockHeld = false;
+    stopShockSpam();
+    return;
+  }
+
+  setKey(event.key, false, false);
+});
 window.addEventListener('resize', resizeCanvasForDevice);
 
-function setKey(key, pressed) {
+window.addEventListener('keydown', (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'u') {
+    event.preventDefault();
+    showToast('Page source is disabled here. Server code is not sent to browsers.');
+  }
+});
+
+function setKey(key, pressed, repeat) {
   if (key === 'ArrowLeft' || key === 'a' || key === 'A') state.input.left = pressed;
   if (key === 'ArrowRight' || key === 'd' || key === 'D') state.input.right = pressed;
-  if (key === 'ArrowUp' || key === 'w' || key === 'W') state.input.jump = pressed;
+  if (pressed && !repeat && (key === 'ArrowUp' || key === 'w' || key === 'W')) state.input.jumpToken += 1;
   sendInput();
 }
 
@@ -209,6 +242,23 @@ function sendShockwave() {
 
   state.nextShockwaveAt = now + state.shockwave.cooldownMs;
   state.socket.send(JSON.stringify({ type: 'shockwave' }));
+}
+
+function startShockSpam() {
+  if (!state.isAdmin || shockSpamTimer) {
+    return;
+  }
+
+  shockSpamTimer = window.setInterval(() => {
+    if (state.shockHeld) {
+      sendShockwave();
+    }
+  }, state.shockwave.cooldownMs);
+}
+
+function stopShockSpam() {
+  window.clearInterval(shockSpamTimer);
+  shockSpamTimer = 0;
 }
 
 function render() {
@@ -438,6 +488,11 @@ function isValidUsername(value) {
   const username = value.trim().replace(/\s+/g, ' ');
   const length = [...username].length;
   return length >= 2 && length <= 16 && /^[\p{L}\p{N} _-]+$/u.test(username);
+}
+
+function isReservedAdminName(value) {
+  const username = value.trim().replace(/\s+/g, ' ').toLowerCase();
+  return username === '강지오' || username === 'trixie';
 }
 
 function updateFps() {

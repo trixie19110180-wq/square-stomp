@@ -26,6 +26,10 @@ const SHOCKWAVE_RADIUS = 260;
 const SHOCKWAVE_FORCE_X = 920;
 const SHOCKWAVE_FORCE_Y = 620 * 1.5;
 const PLATFORMS = mapToPlatforms(MAP);
+const RESERVED_ADMIN_NAMES = new Set(['강지오', 'trixie']);
+const ADMIN_SHOCKWAVE_COOLDOWN_MS = 100;
+const ADMIN_PASSCODE_TEXT = process.env.ADMIN_PASSCODE_TEXT || '';
+const ADMIN_PASSCODE_CODE = process.env.ADMIN_PASSCODE_CODE || '';
 
 const app = express();
 const server = http.createServer(app);
@@ -48,8 +52,10 @@ const players = new Map();
  * @property {number} prevX
  * @property {number} prevY
  * @property {number} score
+ * @property {boolean} isAdmin
  * @property {boolean} grounded
- * @property {{left: boolean, right: boolean, jump: boolean}} input
+ * @property {{left: boolean, right: boolean, jumpToken: number}} input
+ * @property {number} lastJumpToken
  * @property {number} lastStompAt
  * @property {number} lastShockwaveAt
  * @property {number} invulnerableUntil
@@ -63,7 +69,7 @@ app.get('/api/username/:username', (req, res) => {
     return res.status(400).json({ available: false, reason: 'Use 2-16 Korean/English letters, numbers, spaces, underscores, or hyphens.' });
   }
 
-  res.json({ available: !isUsernameTaken(username) });
+  res.json({ available: !isUsernameTaken(username), reserved: isReservedAdminName(username) });
 });
 
 wss.on('connection', (socket) => {
@@ -113,6 +119,12 @@ function handleJoin(id, socket, message) {
     return send(socket, { type: 'joinRejected', reason: 'That username is already active.' });
   }
 
+  const adminAttempt = isReservedAdminName(username);
+  const isAdmin = adminAttempt && isValidAdminPasscodes(message.adminPassphrase, message.adminCode);
+  if (adminAttempt && !isAdmin) {
+    return send(socket, { type: 'joinRejected', reason: 'That name is reserved. Enter the admin passcodes to use it.' });
+  }
+
   if (!color) {
     return send(socket, { type: 'joinRejected', reason: 'Use a valid hex, rgb(), or rgba() color.' });
   }
@@ -129,8 +141,10 @@ function handleJoin(id, socket, message) {
     prevX: spawn.x,
     prevY: spawn.y,
     score: 0,
+    isAdmin,
     grounded: false,
-    input: { left: false, right: false, jump: false },
+    input: { left: false, right: false, jumpToken: 0 },
+    lastJumpToken: 0,
     lastStompAt: 0,
     lastShockwaveAt: 0,
     invulnerableUntil: Date.now() + RESPAWN_INVULN_MS
@@ -142,7 +156,8 @@ function handleJoin(id, socket, message) {
     arena: ARENA,
     size: PLAYER_SIZE,
     platforms: PLATFORMS,
-    shockwave: { cooldownMs: SHOCKWAVE_COOLDOWN_MS, radius: SHOCKWAVE_RADIUS }
+    isAdmin,
+    shockwave: { cooldownMs: getShockwaveCooldown({ isAdmin }), radius: SHOCKWAVE_RADIUS }
   });
   broadcastSystem(`${username} joined`);
   broadcastState();
@@ -157,8 +172,14 @@ function handleInput(id, message) {
   player.input = {
     left: Boolean(message.input?.left),
     right: Boolean(message.input?.right),
-    jump: Boolean(message.input?.jump)
+    jumpToken: Number.isSafeInteger(message.input?.jumpToken) ? message.input.jumpToken : player.input.jumpToken
   };
+
+  if (player.input.jumpToken !== player.lastJumpToken && (player.grounded || player.isAdmin)) {
+    player.vy = -JUMP_SPEED;
+    player.grounded = false;
+    player.lastJumpToken = player.input.jumpToken;
+  }
 }
 
 function handleShockwave(id) {
@@ -168,11 +189,12 @@ function handleShockwave(id) {
   }
 
   const now = Date.now();
-  if (now - player.lastShockwaveAt < SHOCKWAVE_COOLDOWN_MS) {
+  const cooldown = getShockwaveCooldown(player);
+  if (now - player.lastShockwaveAt < cooldown) {
     send(sockets.get(id), {
       type: 'event',
       event: 'shockwaveBlocked',
-      readyIn: SHOCKWAVE_COOLDOWN_MS - (now - player.lastShockwaveAt)
+      readyIn: cooldown - (now - player.lastShockwaveAt)
     });
     return;
   }
@@ -244,11 +266,6 @@ function update(dt) {
     if (!direction) {
       player.vx *= FRICTION;
       if (Math.abs(player.vx) < 4) player.vx = 0;
-    }
-
-    if (player.input.jump && player.grounded) {
-      player.vy = -JUMP_SPEED;
-      player.grounded = false;
     }
 
     player.x += player.vx * dt;
@@ -425,8 +442,9 @@ function broadcastState() {
       vx: round(player.vx),
       vy: round(player.vy),
       score: player.score,
+      isAdmin: player.isAdmin,
       invulnerable: Date.now() < player.invulnerableUntil,
-      shockReadyIn: Math.max(0, SHOCKWAVE_COOLDOWN_MS - (Date.now() - player.lastShockwaveAt))
+      shockReadyIn: Math.max(0, getShockwaveCooldown(player) - (Date.now() - player.lastShockwaveAt))
     }))
   });
 }
@@ -489,6 +507,23 @@ function normalizeUsername(value) {
     return '';
   }
   return username;
+}
+
+function isReservedAdminName(username) {
+  return RESERVED_ADMIN_NAMES.has(username.toLowerCase());
+}
+
+function isValidAdminPasscodes(passphrase, code) {
+  return (
+    ADMIN_PASSCODE_TEXT !== '' &&
+    ADMIN_PASSCODE_CODE !== '' &&
+    String(passphrase || '') === ADMIN_PASSCODE_TEXT &&
+    String(code || '') === ADMIN_PASSCODE_CODE
+  );
+}
+
+function getShockwaveCooldown(player) {
+  return player.isAdmin ? ADMIN_SHOCKWAVE_COOLDOWN_MS : SHOCKWAVE_COOLDOWN_MS;
 }
 
 function normalizeColor(value) {

@@ -85,6 +85,15 @@ h1 {
   gap: 18px;
 }
 
+.admin-fields {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(21, 24, 33, 0.58);
+  padding: 14px;
+}
+
 label {
   display: grid;
   gap: 8px;
