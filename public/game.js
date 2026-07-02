@@ -11,6 +11,7 @@ const ctx = canvas.getContext('2d');
 const connectionStatus = document.querySelector('#connectionStatus');
 const playerCount = document.querySelector('#playerCount');
 const coordinates = document.querySelector('#coordinates');
+const fpsStatus = document.querySelector('#fpsStatus');
 const shockStatus = document.querySelector('#shockStatus');
 const scoreboard = document.querySelector('#scoreboard');
 const toast = document.querySelector('#toast');
@@ -28,7 +29,10 @@ const state = {
   input: { left: false, right: false, jump: false },
   joined: false,
   lastInputSent: '',
-  nextShockwaveAt: 0
+  nextShockwaveAt: 0,
+  fps: 0,
+  framesThisSecond: 0,
+  lastFpsAt: performance.now()
 };
 
 let toastTimer = 0;
@@ -51,8 +55,8 @@ joinForm.addEventListener('submit', async (event) => {
   const username = usernameInput.value.trim().replace(/\s+/g, ' ');
   const color = colorInput.value.trim();
 
-  if (!/^[a-zA-Z0-9 _-]{2,16}$/.test(username)) {
-    return showError('Use 2-16 letters, numbers, spaces, underscores, or hyphens.');
+  if (!isValidUsername(username)) {
+    return showError('Use 2-16 Korean/English letters, numbers, spaces, underscores, or hyphens.');
   }
 
   if (!isValidColorFormat(color)) {
@@ -213,6 +217,7 @@ function render() {
   }
 
   const { width, height, ratio } = getCanvasMetrics();
+  updateFps();
   updateRenderedPlayers();
   const camera = getCamera(width, height);
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -353,7 +358,8 @@ function updateHud() {
   const remaining = Math.max(0, state.nextShockwaveAt - performance.now(), local?.shockReadyIn || 0);
 
   playerCount.textContent = `${players.length} player${players.length === 1 ? '' : 's'}`;
-  coordinates.textContent = local ? `x: ${Math.round(local.x)} y: ${Math.round(local.y)} z: 0` : 'x: 0 y: 0 z: 0';
+  coordinates.textContent = local ? `x: ${formatWorldUnit(local.x)} y: ${formatWorldUnit(local.y)} z: 0.00` : 'x: 0.00 y: 0.00 z: 0.00';
+  fpsStatus.textContent = `FPS: ${state.fps}`;
   shockStatus.textContent = remaining > 0 ? `Shockwave: ${(remaining / 1000).toFixed(1)}s` : 'Shockwave: Ready';
   scoreboard.replaceChildren(...players.map((player) => {
     const item = document.createElement('li');
@@ -426,6 +432,27 @@ function isValidColorFormat(value) {
   const hex = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
   const rgb = /^rgba?\(\s*(?:25[0-5]|2[0-4]\d|1?\d?\d)\s*,\s*(?:25[0-5]|2[0-4]\d|1?\d?\d)\s*,\s*(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\s*,\s*(?:0(?:\.\d+)?|1(?:\.0+)?|\.\d+))?\s*\)$/i;
   return hex.test(color) || rgb.test(color);
+}
+
+function isValidUsername(value) {
+  const username = value.trim().replace(/\s+/g, ' ');
+  const length = [...username].length;
+  return length >= 2 && length <= 16 && /^[\p{L}\p{N} _-]+$/u.test(username);
+}
+
+function updateFps() {
+  const now = performance.now();
+  state.framesThisSecond += 1;
+
+  if (now - state.lastFpsAt >= 1000) {
+    state.fps = Math.round((state.framesThisSecond * 1000) / (now - state.lastFpsAt));
+    state.framesThisSecond = 0;
+    state.lastFpsAt = now;
+  }
+}
+
+function formatWorldUnit(value) {
+  return (value / 100).toFixed(2);
 }
 
 function clamp(value, min, max) {

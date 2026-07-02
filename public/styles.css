@@ -178,6 +178,7 @@ button:disabled {
 }
 
 #coordinates,
+#fpsStatus,
 #shockStatus {
   border: 1px solid var(--line);
   border-radius: 8px;

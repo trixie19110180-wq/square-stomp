@@ -23,8 +23,11 @@ cd /Users/jinheean/Documents/multiplayer-square-stomp && PATH="/Users/jinheean/.
 - Jump: `W` or up arrow
 - Shockwave: space
 
+Positions shown in the HUD are divided by 100, so an internal `x` position of `3422` appears as `34.22`.
+
 ## Project structure
 
+- `map.js` contains only the tile map grid. `1` means solid platform, `0` means empty space.
 - `server.js` manages active players, unique usernames, platform physics, shockwaves, stomp detection, scoring, respawns, and WebSocket broadcasts.
 - `public/index.html` contains the landing screen and game canvas.
 - `public/styles.css` handles responsive layout and visual design.

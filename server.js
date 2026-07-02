@@ -2,11 +2,17 @@ import express from 'express';
 import http from 'http';
 import { WebSocketServer } from 'ws';
 import crypto from 'crypto';
+import fs from 'fs';
+import vm from 'vm';
 
 const PORT = Number(process.env.PORT || 3000);
 const TICK_RATE = 60;
 const BROADCAST_RATE = 30;
-const ARENA = { width: 4200, height: 720 };
+const TILE_SIZE = 100;
+const MAP = loadMap();
+const ARENA = { width: MAP[0].length * TILE_SIZE, height: 720 };
+const PLATFORM_HEIGHT = 26;
+const FLOOR_HEIGHT = 40;
 const PLAYER_SIZE = 42;
 const GRAVITY = 2300;
 const MOVE_ACCEL = 3000;
@@ -19,22 +25,7 @@ const SHOCKWAVE_COOLDOWN_MS = 4000;
 const SHOCKWAVE_RADIUS = 260;
 const SHOCKWAVE_FORCE_X = 920;
 const SHOCKWAVE_FORCE_Y = 620 * 1.5;
-const PLATFORMS = [
-  { x: 0, y: 680, width: 4200, height: 40 },
-  { x: 210, y: 585, width: 280, height: 26 },
-  { x: 610, y: 515, width: 300, height: 26 },
-  { x: 1030, y: 585, width: 330, height: 26 },
-  { x: 1460, y: 500, width: 300, height: 26 },
-  { x: 1840, y: 590, width: 340, height: 26 },
-  { x: 2300, y: 520, width: 300, height: 26 },
-  { x: 2680, y: 595, width: 350, height: 26 },
-  { x: 3160, y: 525, width: 310, height: 26 },
-  { x: 3570, y: 595, width: 350, height: 26 },
-  { x: 760, y: 405, width: 230, height: 24 },
-  { x: 1570, y: 385, width: 240, height: 24 },
-  { x: 2450, y: 405, width: 230, height: 24 },
-  { x: 3350, y: 405, width: 240, height: 24 }
-];
+const PLATFORMS = mapToPlatforms(MAP);
 
 const app = express();
 const server = http.createServer(app);
@@ -69,7 +60,7 @@ app.use(express.static('public'));
 app.get('/api/username/:username', (req, res) => {
   const username = normalizeUsername(req.params.username);
   if (!username) {
-    return res.status(400).json({ available: false, reason: 'Use 2-16 letters, numbers, spaces, underscores, or hyphens.' });
+    return res.status(400).json({ available: false, reason: 'Use 2-16 Korean/English letters, numbers, spaces, underscores, or hyphens.' });
   }
 
   res.json({ available: !isUsernameTaken(username) });
@@ -115,7 +106,7 @@ function handleJoin(id, socket, message) {
   const color = normalizeColor(message.color);
 
   if (!username) {
-    return send(socket, { type: 'joinRejected', reason: 'Use 2-16 letters, numbers, spaces, underscores, or hyphens.' });
+    return send(socket, { type: 'joinRejected', reason: 'Use 2-16 Korean/English letters, numbers, spaces, underscores, or hyphens.' });
   }
 
   if (isUsernameTaken(username)) {
@@ -493,7 +484,8 @@ function isUsernameTaken(username) {
 
 function normalizeUsername(value) {
   const username = String(value || '').trim().replace(/\s+/g, ' ');
-  if (!/^[a-zA-Z0-9 _-]{2,16}$/.test(username)) {
+  const length = [...username].length;
+  if (length < 2 || length > 16 || !/^[\p{L}\p{N} _-]+$/u.test(username)) {
     return '';
   }
   return username;
@@ -529,6 +521,52 @@ function randomInt(min, max) {
 
 function round(value) {
   return Math.round(value * 10) / 10;
+}
+
+function loadMap() {
+  const source = fs.readFileSync(new URL('./map.js', import.meta.url), 'utf8');
+  const loadedMap = vm.runInNewContext(`${source}\nMAP;`);
+
+  if (!Array.isArray(loadedMap) || loadedMap.length === 0 || !Array.isArray(loadedMap[0])) {
+    throw new Error('map.js must contain const MAP = [[...], ...]');
+  }
+
+  const width = loadedMap[0].length;
+  for (const row of loadedMap) {
+    if (!Array.isArray(row) || row.length !== width || row.some((tile) => tile !== 0 && tile !== 1)) {
+      throw new Error('MAP rows must be equal-width arrays containing only 0 and 1.');
+    }
+  }
+
+  return loadedMap;
+}
+
+function mapToPlatforms(map) {
+  const platforms = [];
+
+  for (let row = 0; row < map.length; row += 1) {
+    let column = 0;
+    while (column < map[row].length) {
+      if (map[row][column] !== 1) {
+        column += 1;
+        continue;
+      }
+
+      const start = column;
+      while (column < map[row].length && map[row][column] === 1) {
+        column += 1;
+      }
+
+      platforms.push({
+        x: start * TILE_SIZE,
+        y: row === map.length - 1 ? ARENA.height - FLOOR_HEIGHT : row * TILE_SIZE,
+        width: (column - start) * TILE_SIZE,
+        height: row === map.length - 1 ? FLOOR_HEIGHT : PLATFORM_HEIGHT
+      });
+    }
+  }
+
+  return platforms;
 }
 
 setInterval(() => update(1 / TICK_RATE), 1000 / TICK_RATE);
